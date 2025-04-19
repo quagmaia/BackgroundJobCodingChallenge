@@ -7,7 +7,7 @@ namespace LogicApp.JobExecution
         public string? ParentExecutionId { get; set; } = null;
         public string ExecutionId { get; init; } = Guid.NewGuid().ToString();
         public int QueueId { get; set; }
-        public dynamic? ExecutionData { get; set; }
+        public Dictionary<string, dynamic?> ExecutionData { get; set; } = new();
         public required Scope Scope { get; init; }
         public int CurrentStep { get; set; } = -1; //-1 means it hasn't started yet
         public List<List<ExecutionIncoming>> AllSequentialSteps { get; init; } = new();
