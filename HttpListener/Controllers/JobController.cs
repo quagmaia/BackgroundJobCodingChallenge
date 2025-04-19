@@ -84,4 +84,5 @@ public record EnqueueRequest
 {
     public int QueueId { get; init; }
     public List<List<ExecutionIncoming>> Steps { get; init; } = new();
+    public Dictionary<string, dynamic> InitialInputs { get; init; } = new();
 }

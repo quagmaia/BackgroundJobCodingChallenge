@@ -1,6 +1,7 @@
 ﻿using BackgroundJobCodingChallenge.Services;
 using LogicApp.JobExecution;
 using LogicApp.Models;
+using LogicApp.Models.Records;
 
 namespace LogicApp.Execution.Steps;
 
@@ -36,9 +37,7 @@ public class SendEmailToTenantUser(IDatabaseService db) : ExecutionStep
 
         try
         {
-            //do the thing
-            //...
-            
+            await SendEmailToTenantUser(userEmail, emailContent);
             jobState.ExecutionData[$"user_{userId}_emailContent_{emailContentId}_sent"] = true;
             SetJobExecutionItem(jobState, $"user_{userId}_newEmailState", "active");
             result = ResultStatus.Success;
@@ -62,7 +61,10 @@ public class SendEmailToTenantUser(IDatabaseService db) : ExecutionStep
 
     }
 
-
+    private async Task SendEmailToTenantUser(string userEmail, dynamic emailContent)
+    {
+        throw new NotImplementedException();
+    }
 }
 internal class EmailInactiveException : Exception { }
 internal class EmailBlockedException : Exception { }
