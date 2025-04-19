@@ -6,9 +6,7 @@ public enum ResultStatus
     Success = 's',
     Timeout = 't',
     Canceled = 'c',
-    NeedRetry = 'r',
-    NeedUserAction = 'u',
-    FailedNoRetry = 'f',
-    FailedNeedAttention = 'n',
-    FailedCritical = 'c',
+    Conflict = 'e',
+    FailedNotRetryable = 'f',
+    FailedRetryable = 'r',
 }

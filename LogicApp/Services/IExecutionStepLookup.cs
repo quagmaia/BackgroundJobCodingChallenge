@@ -1,5 +1,5 @@
-﻿using LogicApp.Models;
-using LogicApp.Tasks;
+﻿using LogicApp.JobExecution;
+using LogicApp.Models;
 
 namespace LogicApp.Services
 {

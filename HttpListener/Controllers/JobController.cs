@@ -1,8 +1,7 @@
 using BackgroundJobCodingChallenge.Services;
+using LogicApp.JobExecution;
 using LogicApp.Models;
-using LogicApp.Models.JobExecution;
 using LogicApp.Services;
-using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HttpApp.Controllers;
@@ -14,10 +13,10 @@ public class JobController : ControllerBase
     public static readonly TimeSpan RequestTimeLimit = TimeSpan.FromSeconds(30);
     private readonly ILogger<JobController> _logger;
     private readonly IQueueService _queue;
-    private readonly IDurableStateManager _durableStateManager;
+    private readonly IJobStateManager _durableStateManager;
     private readonly IExecutionStepLookup _lookup;
 
-    public JobController(IDurableStateManager durableStateManager, IQueueService queue, IExecutionStepLookup lookup, ILogger<JobController> logger)
+    public JobController(IJobStateManager durableStateManager, IQueueService queue, IExecutionStepLookup lookup, ILogger<JobController> logger)
     {
         _durableStateManager = durableStateManager;
         _queue = queue;
@@ -28,28 +27,28 @@ public class JobController : ControllerBase
     [HttpPost(Name = "Enqueue/{queueChannel}")]
     public async Task<object> Enqueue([FromRoute] string queueChannel, [FromHeader] string tenantId, [FromHeader] string userId, [FromBody]EnqueueRequest request)
     {
-
+        var scope = new Scope() { TenantId = tenantId };
         //validate the steps are legal
         var responseBody = new ApiResponse();
 
-        foreach (var stepList in request.Steps.Values)
-            foreach(var stepDefn in stepList)
-                try
-                {
-                    _lookup.ValidateScopeForType(request.Scope, stepDefn.Name);
-                }
-                catch (Exception ex)
-                {
-                    responseBody.Errors.Add(ex);
-                }
+        foreach (var step in request.Steps.SelectMany(s => s))
+            try
+            {
+                _lookup.ValidateScopeForType(scope, step.Name);
+            }
+            catch (Exception ex)
+            {
+                responseBody.Errors.Add(ex);
+            }
         
         if (responseBody.Errors.Count > 0)
             return new ObjectResult(responseBody) { StatusCode = StatusCodes.Status422UnprocessableEntity };
 
         var jobState = new JobState
         {
+            Scope = scope,
             AllSequentialSteps = request.Steps,
-            Scope = request.Scope,
+            QueueId = request.QueueId,
         };
 
         try
@@ -83,7 +82,6 @@ public class JobController : ControllerBase
 
 public record EnqueueRequest 
 {
-    public required Scope Scope { get; init; }
     public int QueueId { get; init; }
-    public OrderedDictionary<int, List<ExecutionIncoming>> Steps { get; init; } = new();
+    public List<List<ExecutionIncoming>> Steps { get; init; } = new();
 }

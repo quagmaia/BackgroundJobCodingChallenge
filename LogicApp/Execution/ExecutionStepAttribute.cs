@@ -1,4 +1,4 @@
-﻿namespace LogicApp.Tasks;
+﻿namespace LogicApp.JobExecution;
 
 [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
 public class ExecutionStepAttribute(ExecutionStepMeta Meta) : Attribute

@@ -1,6 +1,6 @@
 ﻿using System.Reflection;
+using LogicApp.JobExecution;
 using LogicApp.Models;
-using LogicApp.Tasks;
 using Microsoft.Extensions.Logging;
 
 namespace LogicApp.Services
