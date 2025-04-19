@@ -1,11 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Text.Json.Serialization;
-using System.Threading;
-using System.Threading.Tasks;
-using BackgroundJobCodingChallenge.Services;
+﻿using BackgroundJobCodingChallenge.Services;
 using LogicApp.JobExecution;
 using LogicApp.Models;
 using LogicApp.Services;
@@ -20,23 +13,23 @@ public class Executioner(IJobStateManager jobStateManager, IExecutionStepLookup 
     {
         using CancellationTokenSource timeout = new (TimeSpan.FromSeconds(600));
 
-        var oldState = await jobStateManager.TryRead<JobState>(jobKey, timeout.Token) ?? incomingState;
+        var initialState = await jobStateManager.TryRead<JobState>(jobKey, timeout.Token) ?? incomingState;
         
-        if (oldState is null)
+        if (initialState is null)
         {
             logger.LogError("Job state {id} not found", jobKey);
             return;
         }
 
-        if (oldState.IsCompleted || oldState.IsCanceled)
+        if (initialState.Completed || initialState.Canceled || initialState.Failed)
             return;
 
-        var jobState = oldState with { };
+        var jobState = initialState with { };
 
-        var shouldCancel = oldState.KillDate < DateTimeOffset.UtcNow;
+        var shouldCancel = initialState.KillDate < DateTimeOffset.UtcNow;
         if (shouldCancel)
         {
-            jobState.IsCanceled = true;
+            jobState.Canceled = true;
             await ForceUpdateJobState(jobState, TimeSpan.FromDays(30));
             return;
         }
@@ -45,42 +38,69 @@ public class Executioner(IJobStateManager jobStateManager, IExecutionStepLookup 
         var markCompleteAndEnd = jobState.AllSequentialSteps.Count <= jobState.CurrentStep;
         if (markCompleteAndEnd)
         {
-            jobState.IsCompleted = true;
+            jobState.Completed = true;
             UpdateJobState(jobState, TimeSpan.FromDays(30)).Wait(timeout.Token);
             return;
         }
+
+        var finalResult = jobState with { };
 
         try
         {
             var stepGroup = jobState.AllSequentialSteps[jobState.CurrentStep];
             foreach (var stepDfn in stepGroup)
             {
-                await RunStep(timeout, jobState, stepDfn);
+                var tempState = jobState with { };
+                try
+                {
+                    tempState = await RunStep(stepDfn, tempState, timeout.Token);
+                    jobState.ExecutionData = tempState.ExecutionData;
 
+                }
+                catch (Exception e)
+                {
+                    finalResult = initialState with { ExecutionHistory = tempState.ExecutionHistory }; //the in-progress step data needs to all be retried, undo everything
+                    
+                    if (e is JobRetryableException)
+                        throw;
+                    
+                    if (e is StepRetryableException sre)
+                    {
+                        if (sre.ShouldAllowJobRetries)
+                            throw new JobRetryableException($"Step {stepDfn.Name} ran out of retries; will requeue and attempt later", e);
+                        throw new JobUnretryableException($"Step {stepDfn.Name} ran out of retries and cannot recover; canceling job", e);
+                    }
+                }
             }
-        }
-        catch
-        {
 
-        }
-        finally
-        {
-            var ttl = jobState.IsCompleted ? (TimeSpan?)TimeSpan.FromDays(30) : null;
+            var ttl = jobState.Completed ? (TimeSpan?)TimeSpan.FromDays(30) : null;
             await UpdateJobState(jobState, ttl);
 
-            if (!jobState.IsCompleted || !jobState.IsCanceled)
+            if (!jobState.Completed || !jobState.Canceled || !jobState.Failed)
                 await queue.QueueMessageAsync(jobState.QueueId, jobState);
+
+        }
+        catch (JobRetryableException e)
+        {
+            logger.LogError(e, "Job exceptioned. {retryable} {queueId} {parentJobId} {jobId} {tenantId} {currentJobSteps}", true, jobState.QueueId, jobState.ParentExecutionId, jobState.ExecutionId, jobState.Scope.TenantId, jobState.CurrentStep);
+            await UpdateJobState(finalResult);
+            await queue.QueueMessageAsync(finalResult.QueueId, finalResult);
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "Job exceptioned. {retryable} {queueId} {parentJobId} {jobId} {tenantId} {currentJobSteps}", false, jobState.QueueId, jobState.ParentExecutionId, jobState.ExecutionId, jobState.Scope.TenantId, jobState.CurrentStep);
+            
+            finalResult.Failed = true;
+            await UpdateJobState(finalResult);
         }
     }
 
-    private async Task<JobState> RunStep(ExecutionIncoming stepDfn, JobState input, CancellationToken cancellationToken) => await Policy
+    //warning!! this mutates the jobState parameter(so that we don't lose execution history on thrown exceptions)
+    private async Task<JobState> RunStep(ExecutionIncoming stepDfn, JobState jobState, CancellationToken cancellationToken) => await Policy
         .Handle<StepRetryableException>()
         .RetryAsync(2)
         .ExecuteAsync(async () =>
         {
-            if (cancellationToken.IsCancellationRequested)
-                throw new OperationCanceledException(cancellationToken);
-
             var stepHistory = new ExecutionHistory()
             {
                 Step = stepDfn.Name,
@@ -89,7 +109,6 @@ public class Executioner(IJobStateManager jobStateManager, IExecutionStepLookup 
 
             var step = lookup.Load(stepDfn.Name)!;
 
-            JobState jobState = input with { }; //avoids accidental mutation of input
             ResultStatus resultStatus = ResultStatus.Unknown;
 
             try
@@ -98,35 +117,29 @@ public class Executioner(IJobStateManager jobStateManager, IExecutionStepLookup 
             }
             catch (Exception e)
             {
-                logger.LogError(e, "Step {step} failed. {queueId} {parentJobId} {jobId} {tenantId} {currentJobSteps}",stepDfn.Name, input.QueueId, input.ParentExecutionId, input.ExecutionId, input.Scope.TenantId, input.CurrentStep);
+                var retryable = e is StepRetryableException || e is JobRetryableException;
+
+                logger.LogError(e, "Step {step} exceptioned. {retryable} {queueId} {parentJobId} {jobId} {tenantId} {currentJobSteps}", stepDfn.Name, retryable, jobState.QueueId, jobState.ParentExecutionId, jobState.ExecutionId, jobState.Scope.TenantId, jobState.CurrentStep);
                 stepHistory.EndTime = DateTimeOffset.UtcNow;
 
-                if (e is StepRetryableException || e is JobRetryableException)
-                {
-                    stepHistory.Result = ResultStatus.FailedRetryable;
-                    stepHistory.ResultMessage = e.Message;
-                    throw;
-                }
 
-                stepHistory.Result = ResultStatus.FailedNotRetryable;
+                stepHistory.Result = retryable ? ResultStatus.FailedRetryable : ResultStatus.FailedNotRetryable;
                 stepHistory.ResultMessage = e.Message;
+                throw;
             }
-            finally
-            {
-                jobState.ExecutionHistory.Add(stepHistory);
-            }
+
+            stepHistory.EndTime = DateTimeOffset.UtcNow;
+            stepHistory.Result = resultStatus;
+
+            jobState.ExecutionHistory.Add(stepHistory);
 
             if (resultStatus != ResultStatus.Success)
-            {
-                
-            }
+                logger.LogInformation("Step {step} completed as {status}. {queueId} {parentJobId} {jobId} {tenantId} {currentJobSteps}", stepDfn.Name, resultStatus, jobState.QueueId, jobState.ParentExecutionId, jobState.ExecutionId, jobState.Scope.TenantId, jobState.CurrentStep);
 
             return jobState;
         });
 
-
-
-    private async Task UpdateJobState(JobState newState, TimeSpan? ttl) //intentionally not cancelable 
+    private async Task UpdateJobState(JobState newState, TimeSpan? ttl = null) //intentionally not cancelable 
     {
         var executionHistroy = new ExecutionHistory()
         {
@@ -157,8 +170,9 @@ public class Executioner(IJobStateManager jobStateManager, IExecutionStepLookup 
             var latest = await jobStateManager.Read<JobState>(newState.LookupKey, default);
             var newNewState = latest with 
             { 
-                IsCanceled = newState.IsCanceled,
-                IsCompleted = newState.IsCompleted,
+                Canceled = newState.Canceled,
+                Completed = newState.Completed,
+                Failed = newState.Failed,
                 ExecutionHistory = latest.ExecutionHistory,
                 ExecutionData = newState.ExecutionData,
                 CurrentStep = newState.CurrentStep,

@@ -12,8 +12,9 @@ namespace LogicApp.JobExecution
         public int CurrentStep { get; set; } = -1; //-1 means it hasn't started yet
         public List<List<ExecutionIncoming>> AllSequentialSteps { get; init; } = new();
         public List<ExecutionHistory> ExecutionHistory { get; set; } = new();
-        public bool IsCompleted { get; set; }
-        public bool IsCanceled { get; set; }
+        public bool Completed { get; set; }
+        public bool Canceled { get; set; }
+        public bool Failed { get; set; }
         public DateTimeOffset KillDate { get; set; } = DateTimeOffset.UtcNow.AddDays(7); //jobs running after this timespan will be marked as canceled
         public string LookupKey => $"{Scope.TenantId ?? "global"}_{ExecutionId}";
     }
