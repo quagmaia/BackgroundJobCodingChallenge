@@ -4,9 +4,9 @@ public interface IQueueService
 {
 	delegate void FUnsubscribe();
 
-	delegate Task FProcessAsync<TMessage>(TMessage message, CancellationToken cancellationToken);
+	delegate Task FProcessAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default);
 
-	Task QueueMessageAsync<TMessage>(
+    Task QueueMessageAsync<TMessage>(
 		int queueId,
 		TMessage message,
 		CancellationToken cancellationToken = default
