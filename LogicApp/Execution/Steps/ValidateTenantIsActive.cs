@@ -4,10 +4,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using LogicApp.JobExecution;
-using LogicApp.Models.Records;
 using LogicApp.Models;
 using static BackgroundJobCodingChallenge.Services.IDatabaseService;
 using BackgroundJobCodingChallenge.Services;
+using LogicApp.Execution.Steps.models;
 
 namespace LogicApp.Execution.Steps;
 

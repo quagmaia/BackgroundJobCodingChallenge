@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using BackgroundJobCodingChallenge.Services;
 using LogicApp.JobExecution;
 using LogicApp.Models;
@@ -8,23 +9,31 @@ namespace HttpApp.Controllers;
 
 [ApiController]
 [Route("v1/[controller]")]
-public class JobController : ControllerBase
+public class JobController(IJobStateManager jobStateManager, IQueueService queue, IExecutionStepLookup lookup, ILogger<JobController> logger) : ControllerBase
 {
     public static readonly TimeSpan RequestTimeLimit = TimeSpan.FromSeconds(30);
-    private readonly ILogger<JobController> _logger;
-    private readonly IQueueService _queue;
-    private readonly IJobStateManager _durableStateManager;
-    private readonly IExecutionStepLookup _lookup;
 
-    public JobController(IJobStateManager durableStateManager, IQueueService queue, IExecutionStepLookup lookup, ILogger<JobController> logger)
+    [HttpPatch(Name = "cancel/{jobKey}")]
+    public async Task<object> Cancel([FromRoute] string jobKey, [FromHeader] string tenantId, [FromHeader] string userId)
     {
-        _durableStateManager = durableStateManager;
-        _queue = queue;
-        _lookup = lookup;
-        _logger = logger;
+        try
+        {
+            var job = await jobStateManager.TryRead(jobKey);
+            if (job == null)
+                return new ObjectResult(new ApiResponse()) { StatusCode = StatusCodes.Status404NotFound };
+
+            var updated = job with { Canceled = true };
+            await jobStateManager.Write(jobKey, updated, null);
+            return new ObjectResult(new ApiResponse()) { StatusCode = StatusCodes.Status302Found };
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "Failed to cancel job {jobKey}", jobKey);
+            return new ObjectResult(new ApiResponse()) { StatusCode = StatusCodes.Status500InternalServerError };
+        }
     }
 
-    [HttpPost(Name = "Enqueue/{queueChannel}")]
+    [HttpPost(Name = "enqueue/{queueChannel}")]
     public async Task<object> Enqueue([FromRoute] string queueChannel, [FromHeader] string tenantId, [FromHeader] string userId, [FromBody]EnqueueRequest request)
     {
         var scope = new Scope() { TenantId = tenantId };
@@ -34,7 +43,7 @@ public class JobController : ControllerBase
         foreach (var step in request.Steps.SelectMany(s => s))
             try
             {
-                _lookup.ValidateScopeForType(scope, step.Name);
+                lookup.ValidateScopeForType(scope, step.Name);
             }
             catch (Exception ex)
             {
@@ -53,22 +62,22 @@ public class JobController : ControllerBase
 
         try
         {
-            await _queue.QueueMessageAsync(request.QueueId, jobState, default);
+            await queue.QueueMessageAsync(request.QueueId, jobState, default);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to enqueue job {jobState}", jobState);
+            logger.LogError(ex, "Failed to enqueue job {jobState}", jobState);
             responseBody.Errors.Add(ex);
             return new ObjectResult(jobState) { StatusCode = StatusCodes.Status500InternalServerError };
         }
 
         try
         {
-            await _durableStateManager.Write(jobState.LookupKey, jobState, );
+            await jobStateManager.Write(jobState.LookupKey, jobState, null);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to write new job state {jobState}; this is not a blocker but may impact performance and stability", jobState);
+            logger.LogError(ex, "Failed to write new job state {jobState}; this is not a blocker but may impact performance and stability", jobState);
         }
 
         responseBody.Data = new 
@@ -78,11 +87,4 @@ public class JobController : ControllerBase
 
         return new ObjectResult(responseBody) { StatusCode = StatusCodes.Status201Created };
     }
-}
-
-public record EnqueueRequest 
-{
-    public int QueueId { get; init; }
-    public List<List<ExecutionIncoming>> Steps { get; init; } = new();
-    public Dictionary<string, dynamic> InitialInputs { get; init; } = new();
 }

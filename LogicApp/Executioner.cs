@@ -96,7 +96,7 @@ public class Executioner(IJobStateManager jobStateManager, IExecutionStepLookup 
     }
 
     //warning!! this mutates the jobState parameter(so that we don't lose execution history on thrown exceptions)
-    private async Task<JobState> RunStep(ExecutionIncoming stepDfn, JobState jobState, CancellationToken cancellationToken) => await Policy
+    private async Task<JobState> RunStep(StepDefinition stepDfn, JobState jobState, CancellationToken cancellationToken) => await Policy
         .Handle<StepRetryableException>()
         .RetryAsync(2)
         .ExecuteAsync(async () =>

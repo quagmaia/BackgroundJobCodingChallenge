@@ -10,7 +10,7 @@ namespace LogicApp.JobExecution
         public Dictionary<string, dynamic?> ExecutionData { get; set; } = new();
         public required Scope Scope { get; init; }
         public int CurrentStep { get; set; } = -1; //-1 means it hasn't started yet
-        public List<List<ExecutionIncoming>> AllSequentialSteps { get; init; } = new();
+        public List<List<StepDefinition>> AllSequentialSteps { get; init; } = new();
         public List<ExecutionHistory> ExecutionHistory { get; set; } = new();
         public bool Completed { get; set; }
         public bool Canceled { get; set; }
