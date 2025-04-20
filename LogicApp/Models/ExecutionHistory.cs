@@ -1,6 +1,4 @@
-﻿using LogicApp.Models;
-
-namespace LogicApp.JobExecution;
+﻿namespace LogicApp.Models;
 
 public record ExecutionHistory
 {

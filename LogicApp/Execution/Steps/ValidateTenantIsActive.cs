@@ -7,7 +7,6 @@ using LogicApp.JobExecution;
 using LogicApp.Models;
 using static BackgroundJobCodingChallenge.Services.IDatabaseService;
 using BackgroundJobCodingChallenge.Services;
-using LogicApp.Execution.Steps.models;
 
 namespace LogicApp.Execution.Steps;
 

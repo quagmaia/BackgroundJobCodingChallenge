@@ -1,4 +1,4 @@
-﻿namespace LogicApp.Execution.Steps.models;
+﻿namespace LogicApp.Models;
 
 public record TenantUser(string Id, string TenantId, string PreferredEmail, string PreferredEmailStatus);
 

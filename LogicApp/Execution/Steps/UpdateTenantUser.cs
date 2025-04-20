@@ -1,5 +1,4 @@
 ﻿using BackgroundJobCodingChallenge.Services;
-using LogicApp.Execution.Steps.models;
 using LogicApp.JobExecution;
 using LogicApp.Models;
 

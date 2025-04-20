@@ -1,7 +1,7 @@
 ﻿using LogicApp.JobExecution;
 using LogicApp.Models;
 
-namespace LogicApp.Execution.Steps;
+namespace LogicApp.Execution;
 
 public abstract class ExecutionStep
 {
@@ -15,14 +15,11 @@ public abstract class ExecutionStep
             : defaultValue;
     }
 
-    protected static T GetJobRequiredExecutionItem<T>(JobState incomingState, string key) 
-    {
-        return incomingState.ExecutionData.TryGetValue(key, out var thing)
+    protected static T GetJobRequiredExecutionItem<T>(JobState incomingState, string key) => incomingState.ExecutionData.TryGetValue(key, out var thing)
             ? thing is T
                 ? thing ?? throw new JobUnretryableException($"Execution data {key} is null.")
                 : throw new JobUnretryableException($"Execution data {key} is not of type {typeof(T).Name}.")
             : throw new JobUnretryableException($"Execution data {key} not found.");
-    }
 
     protected static void SetJobExecutionItem(JobState incomingState, string key, dynamic? value)
     {

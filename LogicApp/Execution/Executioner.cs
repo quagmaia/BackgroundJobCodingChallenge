@@ -5,7 +5,7 @@ using LogicApp.Services;
 using Microsoft.Extensions.Logging;
 using Polly;
 
-namespace LogicApp;
+namespace LogicApp.Execution;
 
 public class Executioner(IJobStateManager jobStateManager, IExecutionStepLookup lookup, IQueueService queue, ILogger<Executioner> logger)
 {
@@ -13,7 +13,7 @@ public class Executioner(IJobStateManager jobStateManager, IExecutionStepLookup 
     {
         using CancellationTokenSource timeout = new (TimeSpan.FromSeconds(600));
 
-        var initialState = await jobStateManager.TryRead<JobState>(jobKey, timeout.Token) ?? incomingState;
+        var initialState = await jobStateManager.TryRead(jobKey, timeout.Token) ?? incomingState;
         
         if (initialState is null)
         {
@@ -66,7 +66,7 @@ public class Executioner(IJobStateManager jobStateManager, IExecutionStepLookup 
                     
                     if (e is StepRetryableException sre)
                     {
-                        if (sre.ShouldAllowJobRetries)
+                        if (sre.AllowRequeues)
                             throw new JobRetryableException($"Step {stepDfn.Name} ran out of retries; will requeue and attempt later", e);
                         throw new JobUnretryableException($"Step {stepDfn.Name} ran out of retries and cannot recover; canceling job", e);
                     }

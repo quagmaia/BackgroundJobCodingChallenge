@@ -1,5 +1,4 @@
 ﻿using BackgroundJobCodingChallenge.Services;
-using LogicApp.Execution.Steps.models;
 using LogicApp.JobExecution;
 using LogicApp.Models;
 using Microsoft.Extensions.Logging;
@@ -7,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace LogicApp.Execution.Steps;
 
 [ExecutionStep(nameof(UpdateTenantUser), false, true)]
-public class BulkSendTenantUserEmails(IDatabaseService db, ILogger<BulkSendTenantUserEmails>) : ExecutionStep
+public class BulkSendTenantUserEmails(IDatabaseService db, ILogger<BulkSendTenantUserEmails> logger) : ExecutionStep
 {
     public override async Task<(JobState, ResultStatus)> Execute(JobState jobState, CancellationToken timeoutToken)
     {
